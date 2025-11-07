@@ -1,14 +1,11 @@
-import glob
-from pathlib import Path
 from importlib import resources
 import numpy as np
-import tifffile as tifff
+import random
 from skimage.util import img_as_float32
 from skimage.transform import resize, estimate_transform, warp, AffineTransform
 from skimage.feature import SIFT, match_descriptors
 from skimage import measure
 import itk
-import os
 
 
 
@@ -24,8 +21,6 @@ def apply_tform_adv(moving_img_itk, transform_map):
         result = itk.transformix_filter(result, single_transform, log_to_console=False)
         transformed_img.append(itk.GetArrayFromImage(result))
 
-    print('Follow-up intensity based registration completed.')
-
     return transformed_img
 
 
@@ -35,9 +30,9 @@ def register_adv_intensity_based(fixed, moving, mpp, transformation):
     if transformation == 'rigid':
         transform_scheme = ["01_Rigid"]
     elif transformation == 'affine':
-        transform_scheme = ["01_Rigid", "02_Affine"]
+        transform_scheme = ["02_Affine"]
     elif transformation == 'bspline':
-        transform_scheme = ["01_Rigid", "02_Affine", "03_BSpline"]
+        transform_scheme = ["03_BSpline"]
     else:
         raise ValueError("transformation for intensity based registration must be one of 'rigid', 'affine', or 'bspline'")
 
@@ -94,6 +89,9 @@ def features_with_SIFT(dapi_img, hne_img, max_ratio=0.6, n_octaves=3, n_scales=5
         descriptors1, descriptors2, max_ratio=max_ratio, cross_check=True
     )
 
+    if matches12.shape[0] < 3:
+        raise ValueError("Not enough matching points found between images for reliable registration.")
+
     # Extract matched keypoints
     src, dst = keypoints1[matches12[:, 0]], keypoints2[matches12[:, 1]]
 
@@ -119,38 +117,62 @@ def register_init_feature_based(dapi_img, hne_img, tform_type):
 
     [hne_matches, dapi_matches] = features_with_SIFT(dapi_img, hne_img)
 
-    tform = estimate_transform(tform_type, src=hne_matches, dst=dapi_matches)
+    num_matches = hne_matches.shape[0]
+    num_tre_points = min(6, num_matches - 3, num_matches // 2)
+    all_idx = set(range(num_matches))
+    tre_idx = random.sample(range(num_matches), num_tre_points)
+    other_idx = list(all_idx - set(tre_idx))
+
+    tform = estimate_transform(tform_type, src=hne_matches[other_idx], dst=dapi_matches[other_idx])
     aligned_hne = warp(hne_img, tform.inverse, output_shape=dapi_img.shape)
+
+    return tform, aligned_hne, [hne_matches[tre_idx], dapi_matches[tre_idx]]
+
+
+
+def register_DAPI_HnE(dapi_img, hne_img, adv_tform=None, feature_tform=None, intensity_tform=None, mpp=None):
+
+    transformations_map = []
+    registered_imgs = {}
+
+    tform_map_init, hne_img_aligned, [hne_tre_pts, dapi_tre_pts] = register_init_feature_based(dapi_img, hne_img, 'similarity')
+    transformations_map.append(tform_map_init)
+    registered_imgs['initial similarity'] = hne_img_aligned
 
     print('Initial feature based registration completed.')
 
-    return tform, aligned_hne
+    if adv_tform == 'feature':
+
+        if feature_tform is None:
+            raise ValueError("feature_tform must be provided for advanced feature based registration")
+        
+        tform_map_feat, hne_img_aligned, _ = register_init_feature_based(dapi_img, hne_img, feature_tform)
+        transformations_map.append(tform_map_feat)
+        registered_imgs[feature_tform] = hne_img_aligned
+
+        print('Advanced feature based registration completed.')
 
 
+    elif adv_tform == 'intensity':
+        if mpp is None or intensity_tform is None:
+            raise ValueError("mpp and intensity_tform must be provided for intensity based registration")
 
-def register_DAPI_HnE(dapi_img, hne_img, tform_init='similarity', tform_adv=None, mpp=None):
-
-    transformations_map = []
-    registered_imgs = []
-
-    tform_map_init, hne_img_aligned = register_init_feature_based(dapi_img, hne_img, tform_init)
-    transformations_map.append(tform_map_init)
-    registered_imgs.append(hne_img_aligned)
-
-    if tform_adv is not None:
-        if mpp is None:
-            raise ValueError("mpp must be provided for intensity based registration")
         tform_maps, reg_imgs = register_adv_intensity_based(
             dapi_img,
             hne_img_aligned,
             mpp,
-            tform_adv
+            intensity_tform
         )
 
         transformations_map.append(tform_maps)
-        registered_imgs.extend(reg_imgs)
+        registered_imgs[intensity_tform] = reg_imgs[-1]
 
-    return transformations_map, registered_imgs
+        print('Follow-up intensity based registration completed.')
+
+    else:
+        print('No advanced registration applied.')
+
+    return transformations_map, registered_imgs, [hne_tre_pts, dapi_tre_pts]
 
 
 
