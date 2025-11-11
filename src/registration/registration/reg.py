@@ -75,21 +75,21 @@ def register_adv_intensity_based(fixed, moving, mpp, transformation):
 
 
 
-def features_with_SIFT(dapi_img, hne_img, max_ratio=0.6, n_octaves=3, n_scales=5):
-    dapiX, dapiY = dapi_img.shape
-    hneX, hneY = hne_img.shape
+def features_with_SIFT(fixed, moving, max_ratio=0.6, n_octaves=3, n_scales=5):
+    fixedX, fixedY = fixed.shape
+    movingX, movingY = moving.shape
     scale_factor = 4
 
     # Resize the images to reduce memory usage
-    dapi_scaled = resize(dapi_img, (dapiX // scale_factor, dapiY // scale_factor), anti_aliasing=True)
-    hne_scaled = resize(hne_img, (hneX // scale_factor, hneY // scale_factor), anti_aliasing=True)
+    fixed_scaled = resize(fixed, (fixedX // scale_factor, fixedY // scale_factor), anti_aliasing=True)
+    moving_scaled = resize(moving, (movingX // scale_factor, movingY // scale_factor), anti_aliasing=True)
 
     descriptor_extractor = SIFT(n_octaves=n_octaves, n_scales=n_scales)
 
-    descriptor_extractor.detect_and_extract(hne_scaled)
+    descriptor_extractor.detect_and_extract(moving_scaled)
     keypoints1, descriptors1 = descriptor_extractor.keypoints, descriptor_extractor.descriptors
 
-    descriptor_extractor.detect_and_extract(dapi_scaled)
+    descriptor_extractor.detect_and_extract(fixed_scaled)
     keypoints2, descriptors2 = descriptor_extractor.keypoints, descriptor_extractor.descriptors
 
     matches12 = match_descriptors(
@@ -109,51 +109,54 @@ def features_with_SIFT(dapi_img, hne_img, max_ratio=0.6, n_octaves=3, n_scales=5
                                AffineTransform, min_samples=4,
                                residual_threshold=2, max_trials=1000)
     
-    hnetemp_matches = src[inliers] 
-    dapitemp_matches = dst[inliers] 
+    movingtemp_matches = src[inliers] 
+    fixedtemp_matches = dst[inliers] 
     
-    hne_matches = hnetemp_matches[:, [1, 0]].copy()
-    dapi_matches = dapitemp_matches[:, [1, 0]].copy()
+    moving_matches = movingtemp_matches[:, [1, 0]].copy()
+    fixed_matches = fixedtemp_matches[:, [1, 0]].copy()
 
-    return [hne_matches, dapi_matches]
-
-
-
-def register_feature_based(dapi_img, hne_img, transform_type, hne_matches, dapi_matches):
-    tform = estimate_transform(transform_type, src=hne_matches, dst=dapi_matches)
-    aligned_hne = warp(hne_img, tform.inverse, output_shape=dapi_img.shape)
-
-    return tform, aligned_hne
+    return [moving_matches, fixed_matches]
 
 
 
-def register_init_feature_based(dapi_img, hne_img):
+def register_feature_based(fixed, moving, transform_type, moving_matches, fixed_matches):
+    tform = estimate_transform(transform_type, src=moving_matches, dst=fixed_matches)
+    aligned_moving = warp(moving, tform.inverse, output_shape=fixed.shape)
+
+    return tform, aligned_moving
 
 
-    [hne_matches, dapi_matches] = features_with_SIFT(dapi_img, hne_img)
+def register_init_feature_based(fixed, moving):
 
-    num_matches = hne_matches.shape[0]
+
+    [moving_matches, fixed_matches] = features_with_SIFT(fixed, moving)
+
+    num_matches = moving_matches.shape[0]
+
+    if num_matches < 3:
+        raise ValueError(f"At least three matching points are required for initial feature based registration, only {num_matches} found.")
+    
     num_tre_points = min(6, num_matches - 3, num_matches // 2)
     all_idx = set(range(num_matches))
     tre_idx = random.sample(range(num_matches), num_tre_points)
     other_idx = list(all_idx - set(tre_idx))
-    hne_pts_for_reg, dapi_pts_for_reg = hne_matches[other_idx], dapi_matches[other_idx]
+    moving_pts_for_reg, fixed_pts_for_reg = moving_matches[other_idx], fixed_matches[other_idx]
 
-    tform = estimate_transform('similarity', src=hne_pts_for_reg, dst=dapi_pts_for_reg)
-    aligned_hne = warp(hne_img, tform.inverse, output_shape=dapi_img.shape)
+    tform = estimate_transform('similarity', src=moving_pts_for_reg, dst=fixed_pts_for_reg)
+    aligned_moving = warp(moving, tform.inverse, output_shape=fixed.shape)
 
-    return tform, aligned_hne, [hne_matches[tre_idx], dapi_matches[tre_idx]], [hne_pts_for_reg, dapi_pts_for_reg]
+    return tform, aligned_moving, [moving_matches[tre_idx], fixed_matches[tre_idx]], [moving_pts_for_reg, fixed_pts_for_reg]
 
 
 
-def register_DAPI_HnE(dapi_img, hne_img, adv_tform=None, feature_tform=None, intensity_tform=None, mpp=None):
+def register_DAPI_HnE(fixed, moving, adv_tform=None, feature_tform=None, intensity_tform=None, mpp=None):
 
     transformations_map = {}
     registered_imgs = {}
 
-    tform_map_init, hne_img_aligned, [hne_tre_pts, dapi_tre_pts], [hne_reg_pts, dapi_reg_pts] = register_init_feature_based(dapi_img, hne_img)
+    tform_map_init, moving_img_aligned, [moving_tre_pts, fixed_tre_pts], [moving_reg_pts, fixed_reg_pts] = register_init_feature_based(fixed, moving)
     transformations_map['initial similarity'] = tform_map_init
-    registered_imgs['initial similarity'] = hne_img_aligned
+    registered_imgs['initial similarity'] = moving_img_aligned
 
     print('Initial feature based registration completed.')
 
@@ -162,9 +165,9 @@ def register_DAPI_HnE(dapi_img, hne_img, adv_tform=None, feature_tform=None, int
         if feature_tform is None:
             raise ValueError("feature_tform must be provided for advanced feature based registration")
 
-        tform_map_feat, hne_img_aligned = register_feature_based(dapi_img, hne_img, feature_tform, hne_reg_pts, dapi_reg_pts)
+        tform_map_feat, moving_img_aligned = register_feature_based(fixed, moving, feature_tform, moving_reg_pts, fixed_reg_pts)
         transformations_map[feature_tform] = tform_map_feat
-        registered_imgs[feature_tform] = hne_img_aligned
+        registered_imgs[feature_tform] = moving_img_aligned
 
         print('Advanced feature based registration completed.')
 
@@ -174,8 +177,8 @@ def register_DAPI_HnE(dapi_img, hne_img, adv_tform=None, feature_tform=None, int
             raise ValueError("mpp and intensity_tform must be provided for intensity based registration")
 
         tform_maps, reg_imgs = register_adv_intensity_based(
-            dapi_img,
-            hne_img_aligned,
+            fixed,
+            moving_img_aligned,
             mpp,
             intensity_tform
         )
@@ -188,7 +191,7 @@ def register_DAPI_HnE(dapi_img, hne_img, adv_tform=None, feature_tform=None, int
     else:
         print('No advanced registration applied.')
 
-    return transformations_map, registered_imgs, [hne_tre_pts, dapi_tre_pts]
+    return transformations_map, registered_imgs, [moving_tre_pts, fixed_tre_pts]
 
 
 
