@@ -1,3 +1,7 @@
+from skimage.transform import warp
+from skimage.util import img_as_float32
+import itk
+import numpy as np
 from .preprocess import load_and_scale_images, colour_deconvolusion_preprocessing_HnE
 from .reg import register_DAPI_HnE
 from .metrics import compute_TRE, compute_mutual_information
@@ -6,6 +10,7 @@ def registration_pipeline(fixed_path, moving_path, fixed_px_sz, moving_px_sz, fi
     
     # load and scale images 
     fixed_init, moving_init = load_and_scale_images(fixed_path, moving_path, fixed_px_sz, moving_px_sz)
+    print("Images loaded.")
 
     # preprocess HnE image
     if fixed_img == 'multiplexed':
@@ -16,9 +21,47 @@ def registration_pipeline(fixed_path, moving_path, fixed_px_sz, moving_px_sz, fi
         moving_prepr = moving_init
     else:
         raise ValueError("fixed_img must be either 'multiplexed' or 'hne'")
+    print("Preprocessing completed.")
     
     # registration
     transformation_maps, registered_imgs, tre_pts = register_DAPI_HnE(fixed_prepr, moving_prepr, adv_tform, feature_tform, intensity_tform, mpp=moving_px_sz)
+    moved_init = warp(moving_init, transformation_maps['initial similarity'].inverse, output_shape=fixed_init.shape)
+
+    if adv_tform is None:
+        moved_img = moved_init
+
+    if adv_tform == 'intensity':
+
+        if moving_init.ndim == 1:
+            result = itk.GetImageFromArray(img_as_float32(moved_init))
+            result.SetSpacing([moving_px_sz, moving_px_sz]) 
+       
+            for key, value in transformation_maps['intensity based'].items():
+                result = itk.transformix_filter(result, value, log_to_console=False)
+        
+            moved_img = itk.GetArrayFromImage(result)
+
+        else:
+            channels = []
+            for c in range(moving_init.shape[2]):
+                img = moved_init[:,:,c]
+                itk_img = itk.GetImageFromArray(img_as_float32(img))
+                itk_img.SetSpacing([moving_px_sz, moving_px_sz])
+
+                for key, value in transformation_maps['intensity based'].items():
+                    itk_img = itk.transformix_filter(itk_img, value, log_to_console=False)
+        
+                transformed_channel = itk.GetArrayFromImage(itk_img)
+                channels.append(transformed_channel)
+
+            min_h = min(ch.shape[0] for ch in channels)
+            min_w = min(ch.shape[1] for ch in channels)
+            channels_cropped = [ch[:min_h, :min_w] for ch in channels]
+            moved_img = np.stack(channels_cropped, axis=-1)
+            
+    elif adv_tform == 'feature':
+        key = list(transformation_maps.keys())[1]
+        moved_img = warp(moving_init, transformation_maps[key].inverse, output_shape=fixed_init.shape)
 
     # evaluate registration with metrics
     try:
@@ -36,6 +79,6 @@ def registration_pipeline(fixed_path, moving_path, fixed_px_sz, moving_px_sz, fi
         print("An unexpected error occurred during mutual information computation:", e)
         mi = None
 
-    return transformation_maps, registered_imgs, tre, mi
+    return transformation_maps, registered_imgs, moved_img, tre, mi
 
 

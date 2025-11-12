@@ -1,4 +1,5 @@
 from importlib import resources
+from pathlib import Path
 import numpy as np
 import random
 from skimage.util import img_as_float32
@@ -38,15 +39,21 @@ def register_adv_intensity_based(fixed, moving, mpp, transformation):
         transform_scheme, transform_names = ["01_Rigid", "02_Affine", "03_BSpline"], ["rigid", "affine", "bspline"]
     elif transformation == 'af-bs':
         transform_scheme, transform_names = ["02_Affine", "03_BSpline"], ["affine", "bspline"]
+    elif transformation == 'r-af':
+        transform_scheme, transform_names = ["01_Rigid", "02_Affine"], ["rigid", "affine"]
+    elif transformation == 'r-bs':
+        transform_scheme, transform_names = ["01_Rigid", "03_BSpline"], ["rigid", "bspline"]
     else:
         raise ValueError("transformation for intensity based registration must be one of 'rigid', 'affine', 'bspline', 'r-af-bs', or 'af-bs'.")
 
     # global_trf_map = itk.ParameterObject.New()
 
     parameter_maps = []
+    base_dir = Path(__file__).parent / "tform_params_adv"
     for tform in transform_scheme:
-        with resources.path("registration.tform_params_adv", f"{tform}.txt") as p:
-            parameter_maps.append(str(p))
+        # with resources.path("registration.tform_params_adv", f"{tform}.txt") as p:
+        p = base_dir / f"{tform}.txt"
+        parameter_maps.append(str(p))
 
     fixed_itk = itk.GetImageFromArray(img_as_float32(fixed))
     fixed_itk.SetSpacing([mpp,mpp])
