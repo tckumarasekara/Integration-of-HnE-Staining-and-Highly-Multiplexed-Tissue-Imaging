@@ -1,0 +1,8 @@
+numpy
+tifffile
+histomicstk
+scikit-image
+scipy
+itk
+itk-elastix
+typer[all]

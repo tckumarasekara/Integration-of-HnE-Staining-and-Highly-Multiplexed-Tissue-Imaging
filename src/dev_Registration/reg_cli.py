@@ -1,64 +1,60 @@
-import typer
+import argparse
 import os
 import json
 from tifffile import imwrite
 from .regPipeline import registration_pipeline
-from .preprocess import extract_channel, load_image_data
 
+def main():
+    parser = argparse.ArgumentParser(description="Image Registration Pipeline")
+    parser.add_argument("fixed_path", type=str, help="Path to the fixed image")
+    parser.add_argument("moving_path", type=str, help="Path to the moving image")
+    parser.add_argument("output_folder", type=str, help="Folder to save the registered images and metrics")
+    parser.add_argument("fixed_px_sz", type=float, help="Pixel size of the fixed image")
+    parser.add_argument("moving_px_sz", type=float, help="Pixel size of the moving image")
+    parser.add_argument("fixed_img", type=str, choices=['multiplexed', 'hne'], help="Type of fixed image: 'multiplexed' or 'hne'")
+    parser.add_argument("--adv_tform", type=str, choices=['feature', 'intensity'], default=None, help="Type of advanced transformation to apply")
+    parser.add_argument("--feature_tform", type=str, choices=['affine', 'projective'], default=None, help="Feature transformation method for advanced feature based registration")
+    parser.add_argument("--intensity_tform", type=str, choices=['rigid', 'affine', 'bspline', 'r-af-bs', 'af-bs', 'r-bs', 'r-af'], default=None, help="Intensity transformation method for follow-up intensity based registration")
+    parser.add_argument("--intermediate_imgs", type=bool, default=False, help="Whether to save intermediate registered grayscale images")
 
-app = typer.Typer(help="Register H&E stained images to multiplexed images using a feature and/or intensity based registration pipeline.")
+    args = parser.parse_args()
 
-
-@app.command(name="register")
-def register(
-    fixed_path: str = typer.Argument(..., help="Path to the fixed image"),
-    moving_path: str = typer.Argument(..., help="Path to the moving image"),
-    output_folder: str = typer.Argument(..., help="Folder to save the registered images and metrics"),
-    fixed_img: str = typer.Argument(..., help="Type of fixed image: ['multiplexed', 'hne']"),
-    fixed_px_sz: float = typer.Option(None, help="Pixel size of the fixed image"),
-    moving_px_sz: float = typer.Option(None, help="Pixel size of the moving image"),
-    adv_tform: str = typer.Option(None, help="Type of advanced transformation to apply: ['feature', 'intensity']"),
-    feature_tform: str = typer.Option(None, help="Feature transformation method for advanced feature based registration: ['affine', 'projective']"),
-    intensity_tform: str = typer.Option(None, help="Intensity transformation method for follow-up intensity based registration: ['rigid', 'affine', 'bspline', 'r-af-bs', 'af-bs', 'r-bs', 'r-af']"),
-    intermediate_imgs: bool = typer.Option(False, help="Whether to save intermediate registered images: --intermediate-imgs or --no-intermediate-imgs", show_default=True),
-):
-    # run the pipeline
     transformation_maps, registered_imgs, final_img, tre, mi = registration_pipeline(
-        fixed_path,
-        moving_path,
-        fixed_px_sz,
-        moving_px_sz,
-        fixed_img,
-        adv_tform=adv_tform,
-        feature_tform=feature_tform,
-        intensity_tform=intensity_tform
+        args.fixed_path,
+        args.moving_path,
+        args.fixed_px_sz,
+        args.moving_px_sz,
+        args.fixed_img,
+        adv_tform=args.adv_tform,
+        feature_tform=args.feature_tform,
+        intensity_tform=args.intensity_tform
     )
 
-    output_folder_path = os.path.join(output_folder, "results")
+    output_folder_path = os.path.join(args.output_folder, "results")
     os.makedirs(output_folder_path, exist_ok=True)
 
     # save registration metrics
     metrics_output_path = os.path.join(output_folder_path, "registration_metrics.json")
-
+    
     with open(metrics_output_path, "w") as f:
-        json.dump({"TRE": tre, "Mutual Information": mi}, f)
+        json.dump({"rTRE": tre, "normalized MI": mi}, f)
     print(f"Registration metrics saved to {metrics_output_path}")
 
     # save registered images
     img_output_folder = os.path.join(output_folder_path, "registered_images")
     os.makedirs(img_output_folder, exist_ok=True)
 
-    if intermediate_imgs:
+    if args.intermediate_imgs: 
         init_reg_img = registered_imgs['initial similarity']
         init_reg_img_path = os.path.join(img_output_folder, "initial_feature_based_similarity_registered_image.tif")
         imwrite(init_reg_img_path, init_reg_img)
 
-        if adv_tform == 'intensity':
+        if args.adv_tform == 'intensity':
             for tform_name, img in registered_imgs['intensity based'].items():
                 img_path = os.path.join(img_output_folder, f"intensity_based_{tform_name}_registered_image.tif")
                 imwrite(img_path, img)
 
-        elif adv_tform == 'feature':
+        elif args.adv_tform == 'feature': 
             key = list(transformation_maps.keys())[1]
             adv_reg_img = registered_imgs[key]
             adv_reg_img_path = os.path.join(img_output_folder, f"feature_based_{key}_registered_image.tif")
@@ -77,15 +73,15 @@ def register(
     init_tform_map_path = os.path.join(tform_output_folder, "initial_feature_based_similarity_transformation_map.txt")
     with open(init_tform_map_path, "w") as f:
         f.write(str(init_tform_map.params))
-
-    if adv_tform == 'intensity':
+    
+    if args.adv_tform == 'intensity':
         for tform_name, tform_map in transformation_maps['intensity based'].items():
             tform_map_path = os.path.join(tform_output_folder, f"intensity_based_{tform_name}_transformation_map.txt")
             with open(tform_map_path, "w") as f:
                 for item in tform_map.GetParameterMap(0).items():
                     f.write(f"{item}\n")
 
-    elif adv_tform == 'feature':
+    elif args.adv_tform == 'feature':
         key = list(transformation_maps.keys())[1]
         adv_tform_map = transformation_maps[key]
         adv_tform_map_path = os.path.join(tform_output_folder, f"feature_based_{key}_transformation_map.txt")
@@ -95,21 +91,5 @@ def register(
     print(f"Transformation maps saved to {tform_output_folder}")
 
 
-@app.command(name="extract-channel")
-def extract_channel_cmd(
-    file_path: str = typer.Argument(..., help="Path to the input image"),
-    output_folder_path: str = typer.Argument(..., help="Folder to save the image with extracted channel"),
-    channel_idx: int = typer.Option(0, help="Channel index to extract (Default = 0 for DAPI)", show_default=True),
-):
-    img = load_image_data(file_path)
-    img_ch = extract_channel(img, channel_idx)
-
-    img_folder_path = os.path.join(output_folder_path, "channel_extracted_image")
-    os.makedirs(img_folder_path, exist_ok=True)
-    img_path = os.path.join(img_folder_path, f"multiplexed_channel_{channel_idx}.tif")
-    imwrite(img_path, img_ch)
-    print(f"Image with extracted channel saved to {img_path}")
-
-
 if __name__ == "__main__":
-    app()
+    main()

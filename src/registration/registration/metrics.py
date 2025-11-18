@@ -128,8 +128,9 @@ def mutual_information_metric(fixed, moving, bins):
     
     # Mutual Information
     mutual_info = Hx + Hy - Hxy
+    n_mutual_info = mutual_info / np.mean([Hx, Hy]) 
     
-    return mutual_info
+    return n_mutual_info
 
 
 
@@ -138,25 +139,25 @@ def compute_mutual_information(fixed, moving, transformed_imgs, bins = 50):
     
     mi_before = mutual_information_metric(fixed, moving, bins)
     mi_scores['before registration'] = mi_before
-    print("Mutual Information before registration: ", mi_before)
+    print("normalized MI before registration: ", mi_before)
 
     tform_img = transformed_imgs['initial similarity']
     mi_after_init = mutual_information_metric(fixed, tform_img, bins)
     mi_scores['initial similarity'] = mi_after_init
-    print("Mutual Information after initial feature based registration: ", mi_after_init)
+    print("normalized MI after initial feature based registration: ", mi_after_init)
 
     if 'intensity based' not in transformed_imgs and len(transformed_imgs) > 1:
         key = list(transformed_imgs.keys())[1]
         tform_img = transformed_imgs[key]
         mi_after_feat = mutual_information_metric(fixed, tform_img, bins)
         mi_scores[key] = mi_after_feat
-        print("Mutual Information after feature based", key, "transformation: ", mi_after_feat)
+        print("normalized MI after feature based", key, "transformation: ", mi_after_feat)
 
     elif 'intensity based' in transformed_imgs:
 
         for tform_name, tform_img in transformed_imgs['intensity based'].items():
             mi_after_intensity = mutual_information_metric(fixed, tform_img, bins)
             mi_scores[tform_name] = mi_after_intensity
-            print("Mutual Information after follow-up intensity based", tform_name, "transformation: ", mi_after_intensity)
+            print("normalized MI after follow-up intensity based", tform_name, "transformation: ", mi_after_intensity)
 
     return mi_scores

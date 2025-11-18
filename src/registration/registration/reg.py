@@ -1,6 +1,4 @@
-from importlib import resources
 from pathlib import Path
-import numpy as np
 import random
 from skimage.util import img_as_float32
 from skimage.transform import resize, estimate_transform, warp, AffineTransform
@@ -86,6 +84,9 @@ def features_with_SIFT(fixed, moving, max_ratio=0.6, n_octaves=3, n_scales=5):
     fixedX, fixedY = fixed.shape
     movingX, movingY = moving.shape
     scale_factor = 4
+
+    if fixedX > 2000 or fixedY > 2000:
+        scale_factor = max(fixedX // 2000, fixedY // 2000) * 4
 
     # Resize the images to reduce memory usage
     fixed_scaled = resize(fixed, (fixedX // scale_factor, fixedY // scale_factor), anti_aliasing=True)
