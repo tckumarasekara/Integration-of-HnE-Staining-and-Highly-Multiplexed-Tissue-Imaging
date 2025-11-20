@@ -1,0 +1,69 @@
+name: Build, Publish, and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # Install Poetry
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      # Extract version from Git tag
+      - name: Get version from tag
+        id: get_version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}   # remove 'refs/tags/v' prefix
+          echo "VERSION=$TAG" >> $GITHUB_ENV
+
+      # Set package version in pyproject.toml
+      - name: Set package version
+        run: poetry version $VERSION
+
+      # Install dependencies
+      - name: Install dependencies
+        run: poetry install --no-root
+
+      # Build the package
+      - name: Build package
+        run: poetry build
+
+      # Publish to TestPyPI
+      - name: Publish to TestPyPI
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: poetry publish --repository testpypi \
+                            --username __token__ \
+                            --password ${{ secrets.TEST_PYPI_API_TOKEN }}
+
+      # Publish to PyPI 
+      # - name: Publish to PyPI
+      #   if: startsWith(github.ref, 'refs/tags/v')
+      #   run: poetry publish \
+      #               --username __token__ \
+      #               --password ${{ secrets.PYPI_API_TOKEN }}
+
+      # Create GitHub Release and attach artifacts
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: "Release ${{ github.ref_name }} of he2multi_reg"
+          files: dist/*.tar.gz,dist/*.whl
