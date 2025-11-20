@@ -1,9 +1,13 @@
 import typer
 import os
+import numpy as np
 import json
 from tifffile import imwrite
+import itk
+from skimage.transform import AffineTransform, ProjectiveTransform
 from .regPipeline import registration_pipeline
-from .preprocess import extract_channel, load_image_data
+from .preprocess import extract_channel, load_image_data, get_image_size_ome_tiff
+from .reg import transform_seg_mask
 
 
 app = typer.Typer(help="Register H&E stained images to multiplexed images using a feature and/or intensity based registration pipeline.")
@@ -74,25 +78,23 @@ def register(
     os.makedirs(tform_output_folder, exist_ok=True)
 
     init_tform_map = transformation_maps['initial similarity']
-    init_tform_map_path = os.path.join(tform_output_folder, "initial_feature_based_similarity_transformation_map.txt")
-    with open(init_tform_map_path, "w") as f:
-        f.write(str(init_tform_map.params))
+    np.save(os.path.join(tform_output_folder, f"{1}_initial_feature_based_similarity_transformation_map.npy"), init_tform_map.params)
 
     if adv_tform == 'intensity':
-        for tform_name, tform_map in transformation_maps['intensity based'].items():
-            tform_map_path = os.path.join(tform_output_folder, f"intensity_based_{tform_name}_transformation_map.txt")
+        for idx, (tform_name, tform_map) in enumerate(transformation_maps['intensity based'].items()):
+            tform_map_path = os.path.join(tform_output_folder, f"{idx+2}_intensity_based_{tform_name}_transformation_map.txt")
             with open(tform_map_path, "w") as f:
                 for item in tform_map.GetParameterMap(0).items():
-                    f.write(f"{item}\n")
+                    s = str(item).replace("'", "").replace(",", "")
+                    f.write(f"{s}\n")
 
     elif adv_tform == 'feature':
         key = list(transformation_maps.keys())[1]
         adv_tform_map = transformation_maps[key]
-        adv_tform_map_path = os.path.join(tform_output_folder, f"feature_based_{key}_transformation_map.txt")
-        with open(adv_tform_map_path, "w") as f:
-            f.write(str(adv_tform_map.params))
+        np.save(os.path.join(tform_output_folder, f"{2}_feature_based_{key}_transformation_map.npy"), adv_tform_map.params)
 
     print(f"Transformation maps saved to {tform_output_folder}")
+
 
 
 @app.command(name="extract-channel")
@@ -111,5 +113,58 @@ def extract_channel_cmd(
     print(f"Image with extracted channel saved to {img_path}")
 
 
-if __name__ == "__main__":
+
+@app.command(name="transform-seg-mask")
+def transform_seg_mask_cmd(
+    mask_path: str = typer.Argument(..., help="Path to the segmentation mask of the moving image"),
+    fixed_path: str = typer.Argument(..., help="Path to the fixed image"),
+    output_folder_path: str = typer.Argument(..., help="Folder to save the transformed segmentation mask"),
+    tform_map_path: str = typer.Argument(..., help="Path to the transformation maps folder"),
+    mpp: float = typer.Option(None, help="Pixel size of the moving image (only if intensity based registration is applied)", show_default=True),
+):
+    # load mask
+    mask = load_image_data(mask_path) # will need to change according to mask format
+
+    # load and create transformation parameter objects
+    transformation_maps = {}
+
+    tform_files = sorted(os.listdir(tform_map_path), key=lambda x: int(x.split("_")[0]))
+    transformation_maps['initial similarity'] = AffineTransform(matrix=np.load(os.path.join(tform_map_path, tform_files[0])))
+
+    second_file = tform_files[1]
+    if "feature" in second_file:
+        if "affine" in second_file:
+            transformation_maps['affine'] = AffineTransform(matrix=np.load(os.path.join(tform_map_path, second_file)))
+        else:
+            transformation_maps[second_file.split("_")[3]] = ProjectiveTransform(matrix=np.load(os.path.join(tform_map_path, second_file)))
+
+    elif "intensity" in second_file:
+        intensity_tform_maps = {}
+
+        for file in tform_files[1:]:
+            reg_map = itk.ParameterObject.New()
+            reg_map.AddParameterFile(str(os.path.join(tform_map_path, file)))
+            intensity_tform_maps[file.split("_")[3]] = reg_map
+
+        transformation_maps['intensity based'] = intensity_tform_maps
+
+    try:
+        fixed_img_shape = get_image_size_ome_tiff(fixed_path)
+    except:
+        fixed_init = load_image_data(fixed_path)
+        fixed_img_shape = fixed_init.shape[:2]
+        
+    moved_mask = transform_seg_mask(mask, transformation_maps, output_shape=fixed_img_shape, mpp=mpp)
+
+    os.makedirs(output_folder_path, exist_ok=True)
+    np.save(os.path.join(output_folder_path, "transformed_segmentation_mask.npy"), moved_mask)
+    print(f"Transformed segmentation mask saved to {output_folder_path}/transformed_segmentation_mask.npy")
+
+
+
+def main():
     app()
+
+
+if __name__ == "__main__":
+    main()

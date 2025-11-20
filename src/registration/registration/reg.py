@@ -1,5 +1,6 @@
 from pathlib import Path
 import random
+import numpy as np
 from skimage.util import img_as_float32
 from skimage.transform import resize, estimate_transform, warp, AffineTransform
 from skimage.feature import SIFT, match_descriptors
@@ -7,17 +8,45 @@ from skimage import measure
 import itk
 
 
+def transform_seg_mask(mask, transformation_maps, output_shape, mpp=None):
+
+    moved_mask = warp(mask, transformation_maps['initial similarity'].inverse, output_shape=output_shape, order=0, preserve_range=True)
+
+    if 'intensity based' in transformation_maps:
+        if mpp is None:
+            raise ValueError("mpp must be provided for transforming segmentation mask after intensity based registration")
+
+        moving_mask = itk.GetImageFromArray(img_as_float32(moved_mask))
+        moving_mask.SetSpacing([mpp,mpp])
+
+        for _, tform in transformation_maps['intensity based'].items():
+
+            tform.SetParameter("FinalBSplineInterpolationOrder", '0')
+
+            moving_mask = itk.transformix_filter(
+                moving_mask, 
+                tform,
+                log_to_console=False
+            )
+
+        moved_mask = itk.GetArrayFromImage(moving_mask)
+        min_val, max_val = mask.min(), mask.max()
+        moved_mask = np.clip(np.rint(moved_mask), min_val, max_val)
+            
+    elif 'intensity based' not in transformation_maps and len(transformation_maps) > 1:
+        key = list(transformation_maps.keys())[1]
+        moved_mask = warp(mask, transformation_maps[key].inverse, output_shape=output_shape, order=0, preserve_range=True)
+
+    return moved_mask
+
+
 
 def apply_tform_adv(moving_img_itk, transform_map):
-    
-    #no_of_transforms = transform_map.GetNumberOfParameterMaps()
 
     transformed_img = {}
     result = moving_img_itk
-    #for n in range(no_of_transforms):
+
     for key, value in transform_map.items():
-        # single_transform = itk.ParameterObject.New()
-        # single_transform.AddParameterMap(transform_map.GetParameterMap(n))
         result = itk.transformix_filter(result, value, log_to_console=False)
         transformed_img[key] = itk.GetArrayFromImage(result)
 
@@ -44,12 +73,9 @@ def register_adv_intensity_based(fixed, moving, mpp, transformation):
     else:
         raise ValueError("transformation for intensity based registration must be one of 'rigid', 'affine', 'bspline', 'r-af-bs', or 'af-bs'.")
 
-    # global_trf_map = itk.ParameterObject.New()
-
     parameter_maps = []
     base_dir = Path(__file__).parent / "tform_params_adv"
     for tform in transform_scheme:
-        # with resources.path("registration.tform_params_adv", f"{tform}.txt") as p:
         p = base_dir / f"{tform}.txt"
         parameter_maps.append(str(p))
 
@@ -71,7 +97,6 @@ def register_adv_intensity_based(fixed, moving, mpp, transformation):
             log_to_console=False
         )
 
-        #global_trf_map.AddParameterMap(result_trf_params.GetParameterMap(0))
         global_trf_map[tfname] = result_trf_params
 
     registered_imgs = apply_tform_adv(moving_itk, global_trf_map)

@@ -27,6 +27,15 @@ def colour_deconvolusion_preprocessing_HnE(hne_init):
 
 
 
+def get_image_size_ome_tiff(file_path):
+
+    with TiffFile(file_path) as tif:
+        img = tif.series[0].asarray()
+        shape = img.shape[1:3] 
+        return shape
+
+
+
 def get_pixel_size_ome_tiff(file_path):
     with TiffFile(file_path) as tif:
         ome = tif.ome_metadata
@@ -47,7 +56,7 @@ def get_pixel_size_ome_tiff(file_path):
 
 
 def load_image_data(file_path):
-    if file_path.endswith(".tif"): 
+    if file_path.endswith(".tif") or file_path.endswith(".tiff"):
         img_raw = imread(file_path)
         img = np.array(img_raw) 
 
