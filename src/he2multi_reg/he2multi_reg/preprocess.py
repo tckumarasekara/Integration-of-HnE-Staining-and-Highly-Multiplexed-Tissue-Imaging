@@ -31,7 +31,7 @@ def get_image_size_ome_tiff(file_path):
 
     with TiffFile(file_path) as tif:
         img = tif.series[0].asarray()
-        shape = img.shape[1:3] 
+        shape = img.shape[0:2] if img.ndim == 2 or img.shape[0] < img.shape[2] else img.shape[1:3] 
         return shape
 
 
@@ -76,12 +76,20 @@ def extract_channel(img, channel_index):
 def load_and_scale_images(fixed_path, moving_path, fixed_px_sz, moving_px_sz):
 
     if fixed_px_sz is None:
-        fixed_px_sz, _ = get_pixel_size_ome_tiff(fixed_path)
+        try:
+            fixed_px_sz, _ = get_pixel_size_ome_tiff(fixed_path)
+        except Exception:
+            fixed_px_sz = None
+        
         if fixed_px_sz is None:
             raise ValueError("Pixel size information not found in metadata for fixed image. Please provide fixed_px_sz.")
 
     if moving_px_sz is None:
-        moving_px_sz, _ = get_pixel_size_ome_tiff(moving_path)
+        try:
+            moving_px_sz, _ = get_pixel_size_ome_tiff(moving_path)
+        except Exception:
+            moving_px_sz = None
+
         if moving_px_sz is None:
             raise ValueError("Pixel size information not found in metadata for moving image. Please provide moving_px_sz.")
 

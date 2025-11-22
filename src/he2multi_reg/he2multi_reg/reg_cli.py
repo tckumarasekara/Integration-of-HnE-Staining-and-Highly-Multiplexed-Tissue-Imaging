@@ -4,7 +4,7 @@ import numpy as np
 import json
 from tifffile import imwrite
 import itk
-from skimage.transform import AffineTransform, ProjectiveTransform
+from skimage.transform import AffineTransform, ProjectiveTransform, resize
 from .regPipeline import registration_pipeline
 from .preprocess import extract_channel, load_image_data, get_image_size_ome_tiff
 from .reg import transform_seg_mask
@@ -15,12 +15,12 @@ app = typer.Typer(help="Register H&E stained images to multiplexed images using 
 
 @app.command(name="register")
 def register(
-    fixed_path: str = typer.Argument(..., help="Path to the fixed image"),
-    moving_path: str = typer.Argument(..., help="Path to the moving image"),
+    fixed_path: str = typer.Argument(..., help="Path to the fixed image (.tif/.tiff/.ome.tif/.ome.tiff)"),
+    moving_path: str = typer.Argument(..., help="Path to the moving image (.tif/.tiff/.ome.tif/.ome.tiff)"),
     output_folder: str = typer.Argument(..., help="Folder to save the registered images and metrics"),
     fixed_img: str = typer.Argument(..., help="Type of fixed image: ['multiplexed', 'hne']"),
-    fixed_px_sz: float = typer.Option(None, help="Pixel size of the fixed image"),
-    moving_px_sz: float = typer.Option(None, help="Pixel size of the moving image"),
+    fixed_px_sz: float = typer.Option(None, help="Pixel size of the fixed image (if image is not .ome.tif)"),
+    moving_px_sz: float = typer.Option(None, help="Pixel size of the moving image (if image is not .ome.tif)"),
     adv_tform: str = typer.Option(None, help="Type of advanced transformation to apply: ['feature', 'intensity']"),
     feature_tform: str = typer.Option(None, help="Feature transformation method for advanced feature based registration: ['affine', 'projective']"),
     intensity_tform: str = typer.Option(None, help="Intensity transformation method for follow-up intensity based registration: ['rigid', 'affine', 'bspline', 'r-af-bs', 'af-bs', 'r-bs', 'r-af']"),
@@ -99,7 +99,7 @@ def register(
 
 @app.command(name="extract-channel")
 def extract_channel_cmd(
-    file_path: str = typer.Argument(..., help="Path to the input image"),
+    file_path: str = typer.Argument(..., help="Path to the input image (.tif/.tiff/.ome.tif/.ome.tiff)"),
     output_folder_path: str = typer.Argument(..., help="Folder to save the image with extracted channel"),
     channel_idx: int = typer.Option(0, help="Channel index to extract (Default = 0 for DAPI)", show_default=True),
 ):
@@ -116,14 +116,16 @@ def extract_channel_cmd(
 
 @app.command(name="transform-seg-mask")
 def transform_seg_mask_cmd(
-    mask_path: str = typer.Argument(..., help="Path to the segmentation mask of the moving image"),
-    fixed_path: str = typer.Argument(..., help="Path to the fixed image"),
+    mask_path: str = typer.Argument(..., help="Path to the segmentation mask of the moving image (.npy)"),
+    fixed_path: str = typer.Argument(..., help="Path to the fixed image (.tif/.tiff/.ome.tif/.ome.tiff)"),
     output_folder_path: str = typer.Argument(..., help="Folder to save the transformed segmentation mask"),
     tform_map_path: str = typer.Argument(..., help="Path to the transformation maps folder"),
-    mpp: float = typer.Option(None, help="Pixel size of the moving image (only if intensity based registration is applied)", show_default=True),
+    moving_px_sz: float = typer.Argument(..., help="Pixel size of the moving image"),
+    fixed_px_sz: float = typer.Option(None, help="Pixel size of the fixed image (if image is not .ome.tif)", show_default=True)
 ):
     # load mask
-    mask = load_image_data(mask_path) # will need to change according to mask format
+    mask = np.load(mask_path) # will need to change according to mask format
+    print(f"Loaded segmentation mask.")
 
     # load and create transformation parameter objects
     transformation_maps = {}
@@ -131,30 +133,46 @@ def transform_seg_mask_cmd(
     tform_files = sorted(os.listdir(tform_map_path), key=lambda x: int(x.split("_")[0]))
     transformation_maps['initial similarity'] = AffineTransform(matrix=np.load(os.path.join(tform_map_path, tform_files[0])))
 
-    second_file = tform_files[1]
-    if "feature" in second_file:
-        if "affine" in second_file:
-            transformation_maps['affine'] = AffineTransform(matrix=np.load(os.path.join(tform_map_path, second_file)))
-        else:
-            transformation_maps[second_file.split("_")[3]] = ProjectiveTransform(matrix=np.load(os.path.join(tform_map_path, second_file)))
+    if len(tform_files) >= 2:
+        second_file = tform_files[1]
+        if "feature" in second_file:
+            if "affine" in second_file:
+                transformation_maps['affine'] = AffineTransform(matrix=np.load(os.path.join(tform_map_path, second_file)))
+            else:
+                transformation_maps[second_file.split("_")[3]] = ProjectiveTransform(matrix=np.load(os.path.join(tform_map_path, second_file)))
 
-    elif "intensity" in second_file:
-        intensity_tform_maps = {}
+        elif "intensity" in second_file:
+            intensity_tform_maps = {}
 
-        for file in tform_files[1:]:
-            reg_map = itk.ParameterObject.New()
-            reg_map.AddParameterFile(str(os.path.join(tform_map_path, file)))
-            intensity_tform_maps[file.split("_")[3]] = reg_map
+            for file in tform_files[1:]:
+                reg_map = itk.ParameterObject.New()
+                reg_map.AddParameterFile(str(os.path.join(tform_map_path, file)))
+                
+                intensity_tform_maps[file.split("_")[3]] = reg_map
 
-        transformation_maps['intensity based'] = intensity_tform_maps
+            transformation_maps['intensity based'] = intensity_tform_maps
 
-    try:
-        fixed_img_shape = get_image_size_ome_tiff(fixed_path)
-    except:
-        fixed_init = load_image_data(fixed_path)
-        fixed_img_shape = fixed_init.shape[:2]
+    print("Loaded transformation maps.")
+
+    fixed_init = load_image_data(fixed_path)
+
+    if fixed_px_sz is None:
+        try:
+            fixed_px_sz, _ = get_pixel_size_ome_tiff(fixed_path)
+        except Exception:
+            fixed_px_sz = None
         
-    moved_mask = transform_seg_mask(mask, transformation_maps, output_shape=fixed_img_shape, mpp=mpp)
+        if fixed_px_sz is None:
+            raise ValueError("Pixel size information not found in metadata for fixed image. Please provide fixed_px_sz.")
+    
+    scale = moving_px_sz / fixed_px_sz
+    if len(fixed_init.shape) == 2:
+        fixed_init_sc = resize(fixed_init, (int(fixed_init.shape[0]/scale), int(fixed_init.shape[1]/scale)), anti_aliasing=True)
+    else:
+        fixed_init_sc = resize(fixed_init, (int(fixed_init[:, :, 0].shape[0]/scale), int(fixed_init[:, :, 0].shape[1]/scale)), anti_aliasing=True)
+    fixed_img_shape = (int(fixed_init_sc.shape[0]), int(fixed_init_sc.shape[1]))
+
+    moved_mask = transform_seg_mask(mask, transformation_maps, output_shape=fixed_img_shape, mpp=moving_px_sz)
 
     os.makedirs(output_folder_path, exist_ok=True)
     np.save(os.path.join(output_folder_path, "transformed_segmentation_mask.npy"), moved_mask)

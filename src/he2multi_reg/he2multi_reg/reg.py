@@ -16,10 +16,10 @@ def transform_seg_mask(mask, transformation_maps, output_shape, mpp=None):
         if mpp is None:
             raise ValueError("mpp must be provided for transforming segmentation mask after intensity based registration")
 
-        moving_mask = itk.GetImageFromArray(img_as_float32(moved_mask))
-        moving_mask.SetSpacing([mpp,mpp])
-
         for _, tform in transformation_maps['intensity based'].items():
+
+            moving_mask = itk.GetImageFromArray(moved_mask.astype(np.float32))
+            moving_mask.SetSpacing([mpp,mpp])
 
             tform.SetParameter("FinalBSplineInterpolationOrder", '0')
 
@@ -29,9 +29,10 @@ def transform_seg_mask(mask, transformation_maps, output_shape, mpp=None):
                 log_to_console=False
             )
 
-        moved_mask = itk.GetArrayFromImage(moving_mask)
-        min_val, max_val = mask.min(), mask.max()
-        moved_mask = np.clip(np.rint(moved_mask), min_val, max_val)
+            moved_mask = itk.GetArrayFromImage(moving_mask)
+            min_val, max_val = mask.min(), mask.max()
+            moved_mask = np.clip(np.rint(moved_mask), min_val, max_val).astype(mask.dtype)
+
             
     elif 'intensity based' not in transformation_maps and len(transformation_maps) > 1:
         key = list(transformation_maps.keys())[1]
