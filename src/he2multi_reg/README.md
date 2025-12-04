@@ -76,7 +76,7 @@ he2multi-reg extract-channel <file_path> <output_folder_path> [--channel-idx N]
 ```
 
 #### Arguments
-- **file-path*** : Path to multichannel image (.tif/.tiff/.ome.tif/.ome.tiff)
+- **file-path** : Path to multichannel image (.tif/.tiff/.ome.tif/.ome.tiff)
 - **output-folder-path** : Folder to save the extracted channel image
 
 #### Options
@@ -97,11 +97,11 @@ he2multi-reg transform-seg-mask <mask_path> <fixed_path> <output_folder_path> <t
 
 #### Arguments
 
-**mask_path** : Path to the segmentation mask of the moving image (.npy)
-**fixed_path** : Path to the fixed image (.tif/.tiff/.ome.tif/.ome.tiff)
-**output_folder_path** : Folder to save the transformed segmentation mask
-**tform_map_path** : Path to the transformation maps folder
-**moving_px_sz** : Path to the transformation maps folder 
+- **mask_path** : Path to the segmentation mask of the moving image (.npy)
+- **fixed_path** : Path to the fixed image (.tif/.tiff/.ome.tif/.ome.tiff)
+- **output_folder_path** : Folder to save the transformed segmentation mask
+- **tform_map_path** : Path to the transformation maps folder
+- **moving_px_sz** : Path to the transformation maps folder 
 
 #### Options
 

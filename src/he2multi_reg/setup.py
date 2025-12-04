@@ -17,7 +17,7 @@ setup(
     python_requires=">=3.11",
     entry_points={
         "console_scripts": [
-            "he2multi-reg=registration.reg_cli:main",
+            "he2multi-reg=he2multi_reg.reg_cli:main",
         ],
     },
     classifiers=[
@@ -29,5 +29,7 @@ setup(
     author="Thusheera Kumarasekara",
     author_email="tckumarasekara@gmail.com",
     description="Tools for image registration between multiplexed and HnE stained tissue images",
+    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
     #url="https://github.com/tckumarasekara/", 
 )

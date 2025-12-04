@@ -20,11 +20,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Install Poetry
-      - name: Install Poetry
+      # Upgrade pip and install build tools
+      - name: Install build tools
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          python -m pip install --upgrade pip
+          pip install build twine
 
       # Extract version from Git tag
       - name: Get version from tag
@@ -33,31 +33,14 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/v}   # remove 'refs/tags/v' prefix
           echo "VERSION=$TAG" >> $GITHUB_ENV
 
-      # Set package version in pyproject.toml
-      - name: Set package version
-        run: poetry version $VERSION
-
-      # Install dependencies
-      - name: Install dependencies
-        run: poetry install --no-root
-
-      # Build the package
+      # Build the package (creates dist/)
       - name: Build package
-        run: poetry build
+        run: python -m build
 
-      # Publish to TestPyPI
-      - name: Publish to TestPyPI
+      # Publish to PyPI
+      - name: Publish to PyPI
         if: startsWith(github.ref, 'refs/tags/v')
-        run: poetry publish --repository testpypi \
-                            --username __token__ \
-                            --password ${{ secrets.TEST_PYPI_API_TOKEN }}
-
-      # Publish to PyPI 
-      # - name: Publish to PyPI
-      #   if: startsWith(github.ref, 'refs/tags/v')
-      #   run: poetry publish \
-      #               --username __token__ \
-      #               --password ${{ secrets.PYPI_API_TOKEN }}
+        run: python -m twine upload dist/* -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
 
       # Create GitHub Release and attach artifacts
       - name: Create GitHub Release
@@ -66,4 +49,5 @@ jobs:
           tag: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: "Release ${{ github.ref_name }} of he2multi_reg"
-          files: dist/*.tar.gz,dist/*.whl
+          artifacts: dist/*.tar.gz,dist/*.whl
+          token: ${{ secrets.GH_TOKEN }}
