@@ -1,12 +1,53 @@
 from skimage.transform import warp
 from skimage.util import img_as_float32
-import itk
 import numpy as np
+import itk
 from .preprocess import load_and_scale_images, colour_deconvolusion_preprocessing_HnE, extract_channel
 from .reg import register_DAPI_HnE
 from .metrics import compute_TRE, compute_mutual_information
 
 def registration_pipeline(fixed_path, moving_path, fixed_px_sz, moving_px_sz, fixed_img, adv_tform=None, feature_tform=None, intensity_tform=None,):
+    """
+    Registration pipeline for registering multiplexed and HnE stained tissue images. Loads and preprocesses images, performs registration, and 
+    evaluates registration quality using TRE and mutual information.
+
+    Parameters:
+    - fixed_path (str) : path to the fixed image 
+    - moving_path (str) : path to the moving image
+    - fixed_px_sz (float or None) : pixel size of the fixed image in micrometers/pixel (if None, will attempt to read from metadata)
+    - moving_px_sz (float or None) : pixel size of the moving image in micrometers/pixel (if None, will attempt to read from metadata)
+    - fixed_img (str) : type of fixed image, either 'multiplexed' or 'hne'
+    - adv_tform (str or None) : advanced transformation type for intensity based registration, either 'intensity', 'feature', or None   
+    - feature_tform (str or None) : feature based transformation type, either 'affine', 'projective', or None
+    - intensity_tform (str or None) : intensity based transformation type, either 'rigid', 'affine', 'bspline', 'r-af-bs', 'af-bs', 'r-af', 'r-bs', or None
+
+    Returns:
+    - transformation_maps (dict) : dictionary of transformation maps (skimage Transform objects or itk Transform objects)
+                            'initial similarity' : skimage Transform object for initial feature based registration
+                            'intensity based' : dictionary of intensity based registration transforms (if any)
+                                                'rigid' and/or 'affine' and/or 'bspline' : itk Transform object
+                                                OR
+                            'affine' or 'projective' : skimage Transform object                                         
+    - registered_imgs (dict) : dictionary of registered images after each registration step
+                            'initial similarity' : np.array of registered image after initial feature based registration
+                            'intensity based' : dictionary of registered images after each intensity based registration step (if any)
+                                                'rigid' and/or 'affine' and/or 'bspline' : np.array of registered image
+                                                OR  
+                            'affine' or 'projective' : np.array of registered image                                       
+    - moved_img (np.array) : final moved image after all registration steps
+    - tre (dict or None) : dictionary of TRE values before and after each registration step
+                            'before registration' : float rTRE before registration
+                            'initial similarity' : float rTRE after initial feature based registration
+                            'rigid' and/or 'affine' and/or 'bspline' OR 'affine' or 'projective' : float rTRE after 
+                                                                                                    each registration (if any)
+                            (None if TRE computation failed)
+    - mi (dict or None) : dictionary of mutual information values before and after each registration step
+                            'before registration' : float MI before registration
+                            'initial similarity' : float MI after initial feature based registration
+                            'rigid' and/or 'affine' and/or 'bspline' OR 'affine' or 'projective' : float MI after 
+                                                                                                    each registration (if any)
+                            (None if MI computation failed)
+    """
     
     # load and scale images 
     fixed_init, moving_init = load_and_scale_images(fixed_path, moving_path, fixed_px_sz, moving_px_sz)

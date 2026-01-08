@@ -1,13 +1,22 @@
 import histomicstk as htk
 import numpy as np
-import os
-from tifffile import imread, TiffFile
+from tifffile import imread, TiffFile, TiffWriter
 from skimage.transform import resize
 import xml.etree.ElementTree as ET
 
 
 
 def colour_deconvolusion_preprocessing_HnE(hne_init):
+    """
+    Decompose HnE stained image into hematoxylin and eosin channels using color deconvolution and return the hematoxylin channel.
+
+    Parameters:
+    hne_init (ndarray): Input HnE stained image.
+
+    Returns:
+    hne_deconv (ndarray): Hematoxylin channel extracted from the HnE stained image.
+    """
+
     # create stain to color map
     stain_color_map = htk.preprocessing.color_deconvolution.stain_color_map
 
@@ -27,7 +36,17 @@ def colour_deconvolusion_preprocessing_HnE(hne_init):
 
 
 
+
 def get_image_size_ome_tiff(file_path):
+    """
+    Get the image size (height, width) from an OME-TIFF file.
+
+    Parameters:
+    - file_path (str) : path to the OME-TIFF file
+
+    Returns:
+    - shape (tuple) : (height, width) of the image
+    """
 
     with TiffFile(file_path) as tif:
         img = tif.series[0].asarray()
@@ -37,6 +56,16 @@ def get_image_size_ome_tiff(file_path):
 
 
 def get_pixel_size_ome_tiff(file_path):
+    """
+    Get the pixel size (PhysicalSizeX, PhysicalSizeY) from an OME-TIFF file.
+
+    Parameters:
+    - file_path (str) : path to the OME-TIFF file
+
+    Returns:
+    - (px, py) (tuple) : PhysicalSizeX and PhysicalSizeY in micrometers/pixel
+    """
+
     with TiffFile(file_path) as tif:
         ome = tif.ome_metadata
         if ome is None:
@@ -110,3 +139,69 @@ def load_and_scale_images(fixed_path, moving_path, fixed_px_sz, moving_px_sz):
     moving_init = load_image_data(moving_path)
 
     return fixed_init, moving_init
+
+
+
+def save_ome_tiff(
+    img,
+    out_path,
+    channel_names=None,
+    physical_size_x=None,
+    physical_size_y=None,
+    source_ome_xml=None):
+
+    if img.ndim == 2:
+        # grayscale (Y, X)
+        Y, X = img.shape
+        C = 1
+        img = img.reshape(Y, X, 1)
+        data = img.transpose(2, 0, 1)
+
+    elif img.ndim == 3:
+        if img.shape[2] == 3:
+            # RGB (Y, X, 3)
+            Y, X, C = img.shape
+            data = img.transpose(2, 0, 1)
+
+        elif img.shape[2] > 3:
+            # multiplexed (Y, X, C)
+            Y, X, C = img.shape
+            data = img.transpose(2, 0, 1)
+
+        else:
+            raise ValueError(f"Unsupported shape {img.shape}: no alpha allowed and no Z/T.")
+
+    else:
+        raise ValueError(f"Unsupported ndim={img.ndim}")
+
+    
+    if channel_names is None:
+        try:
+            if source_ome_xml is not None:
+                root = ET.fromstring(source_ome_xml)
+                channel_names = [c.get("Name") for c in root.findall(".//{*}Channel")]
+            else:
+                # if not provided, auto-generate
+                channel_names = [f"Channel_{i}" for i in range(C)]
+        except:
+            channel_names = [f"Channel_{i}" for i in range(C)]
+
+    if len(channel_names) != C:
+        raise ValueError(f"Channel name count {len(channel_names)} does not match C={C}")
+    
+    
+    with TiffWriter(out_path, bigtiff=True) as tif:
+         metadata={
+             'axes': 'CYX',
+             'PhysicalSizeX': physical_size_x,
+             'PhysicalSizeXUnit': 'µm',
+             'PhysicalSizeY': physical_size_y,
+             'PhysicalSizeYUnit': 'µm',
+             'Channel': {'Name': channel_names},
+         }
+
+         tif.write(
+             data,
+             resolution=(Y, X),
+             metadata=metadata,
+         )

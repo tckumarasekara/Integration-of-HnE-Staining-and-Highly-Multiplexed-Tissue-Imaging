@@ -7,7 +7,7 @@ setup(
     install_requires=[
         "numpy==2.2.6",
         "tifffile==2025.5.10",
-        "histomicstk==1.4.0",
+        "imagecodecs==2025.11.11",
         "scikit-image==0.25.2",
         "scipy==1.16.3",
         "itk==5.4.4.post1",

@@ -9,6 +9,23 @@ import itk
 
 
 def transform_seg_mask(mask, transformation_maps, output_shape, mpp=None):
+    """
+    Transform segmentation mask using the provided transformation maps.
+
+    Parameters:
+    - mask (np.array) : segmentation mask to be transformed
+    - transformation_maps (dict) : dictionary of transformation maps (skimage Transform objects or itk Transform objects)
+                                    'initial similarity' : skimage Transform object for initial feature based registration
+                                    'intensity based' : dictionary of intensity based registration transforms (if any)
+                                                        'rigid' and/or 'affine' and/or 'bspline' : itk Transform object
+                                                        OR
+                                    'affine' or 'projective' : skimage Transform object
+    - output_shape (tuple) : desired output shape of the transformed mask (shape of the fixed image)
+    - mpp (float, optional) : pixel size only required for transforming segmentation mask after intensity based registration
+
+    Returns:
+    - moved_mask (np.array) : transformed segmentation mask
+    """
 
     moved_mask = warp(mask, transformation_maps['initial similarity'].inverse, output_shape=output_shape, order=0, preserve_range=True)
 
@@ -43,6 +60,18 @@ def transform_seg_mask(mask, transformation_maps, output_shape, mpp=None):
 
 
 def apply_tform_adv(moving_img_itk, transform_map):
+    """
+    Apply advanced transformations to the moving image using the provided transformation maps.
+
+    Parameters:
+    - moving_img_itk (itk.Image) : moving image in itk format   
+    - transform_map (dict of itk.Transform) : dictionary of intensity based registration transforms
+                                            'rigid' and/or 'affine' and/or 'bspline' : itk Transform object
+    
+    Returns:
+    - transformed_img (dict of np.array) : dictionary of transformed images after applying each transformation
+                                        'rigid' and/or 'affine' and/or 'bspline' : np.array of transformed image
+    """
 
     transformed_img = {}
     result = moving_img_itk
@@ -56,6 +85,21 @@ def apply_tform_adv(moving_img_itk, transform_map):
 
 
 def register_adv_intensity_based(fixed, moving, mpp, transformation):
+    """
+    Register moving image to fixed image using advanced intensity based registration.
+
+    Parameters:
+    - fixed (np.array) : fixed image
+    - moving (np.array) : moving image
+    - mpp (float) : pixel size in micrometers/pixel
+    - transformation (str) : type of transformation to apply ('rigid', 'affine', 'bspline', 'r-af-bs', 'af-bs', 'r-af', 'r-bs')
+
+    Returns:
+    - global_trf_map (dict of itk.Transform) : dictionary of transformation maps after registration
+                                            'rigid' and/or 'affine' and/or 'bspline' : itk Transform object
+    - registered_imgs (dict of np.array) : dictionary of registered images after applying each transformation
+                                        'rigid' and/or 'affine' and/or 'bspline' : np.array of registered image
+    """
     
     if transformation == 'rigid':
         transform_scheme, transform_names = ["01_Rigid"], ["rigid"]
@@ -106,13 +150,33 @@ def register_adv_intensity_based(fixed, moving, mpp, transformation):
 
 
 
-def features_with_SIFT(fixed, moving, max_ratio=0.6, n_octaves=3, n_scales=5):
+def features_with_SIFT(fixed, moving, max_ratio=0.6, n_octaves=3, n_scales=5, scale_factor=4):
+    """
+    Extract features from fixed and moving images using SIFT and find matching points. Downscale images for feature extraction if 
+    necessary.
+
+    Parameters:
+    - fixed (np.array) : fixed image
+    - moving (np.array) : moving image
+    - max_ratio (float) : maximum ratio for descriptor matching
+    - n_octaves (int) : number of octaves for SIFT
+    - n_scales (int) : number of scales per octave for SIFT
+    - scale_factor (int) : factor to downscale images for feature extraction
+
+    Returns:
+    - moving_matches (np.array) : matched keypoints from moving image
+    - fixed_matches (np.array) : matched keypoints from fixed image
+    """
+
     fixedX, fixedY = fixed.shape
     movingX, movingY = moving.shape
-    scale_factor = 4
+    scale_factor = scale_factor
 
     if fixedX > 2000 or fixedY > 2000:
-        scale_factor = max(fixedX // 2000, fixedY // 2000) * 4
+        scale_factor = max(fixedX // 2000, fixedY // 2000) * scale_factor
+
+    elif fixedX < 250 and fixedY < 250:
+        scale_factor = 1
 
     # Resize the images to reduce memory usage
     fixed_scaled = resize(fixed, (fixedX // scale_factor, fixedY // scale_factor), anti_aliasing=True)
@@ -154,16 +218,48 @@ def features_with_SIFT(fixed, moving, max_ratio=0.6, n_octaves=3, n_scales=5):
 
 
 def register_feature_based(fixed, moving, transform_type, moving_matches, fixed_matches):
+    """
+    Register moving image to fixed image using feature based registration.
+
+    Parameters:
+    - fixed (np.array) : fixed image
+    - moving (np.array) : moving image
+    - transform_type (str) : type of transformation to estimate ('similarity', 'affine', 'projective')
+    - moving_matches (np.array) : matched keypoints from moving image
+    - fixed_matches (np.array) : matched keypoints from fixed image
+
+    Returns:
+    - tform (skimage Transform object) : estimated transformation
+    - aligned_moving (np.array) : moving image aligned to fixed image
+    """
+
     tform = estimate_transform(transform_type, src=moving_matches, dst=fixed_matches)
     aligned_moving = warp(moving, tform.inverse, output_shape=fixed.shape)
 
     return tform, aligned_moving
 
 
-def register_init_feature_based(fixed, moving):
+def register_init_feature_based(fixed, moving, max_ratio=0.6, n_octaves=3, n_scales=5, scale_factor=4):
+    """
+    Call SIFT feature detection and register moving image to fixed image using initial feature based registration. And select 
+    points for TRE computation.
 
+    Parameters:
+    - fixed (np.array) : fixed image
+    - moving (np.array) : moving image
+    - max_ratio (float) : maximum ratio for descriptor matching
+    - n_octaves (int) : number of octaves for SIFT
+    - n_scales (int) : number of scales per octave for SIFT
+    - scale_factor (int) : factor to downscale images for feature extraction
 
-    [moving_matches, fixed_matches] = features_with_SIFT(fixed, moving)
+    Returns:
+    - tform (skimage Transform object) : estimated transformation
+    - aligned_moving (np.array) : moving image aligned to fixed image
+    - tre_points (list of np.array) : points selected for TRE computation [moving_points, fixed_points]
+    - reg_points (list of np.array) : points used for registration [moving_points, fixed_points]
+    """
+
+    [moving_matches, fixed_matches] = features_with_SIFT(fixed, moving, max_ratio=max_ratio, n_octaves=n_octaves, n_scales=n_scales, scale_factor=scale_factor)
 
     num_matches = moving_matches.shape[0]
 
@@ -183,12 +279,46 @@ def register_init_feature_based(fixed, moving):
 
 
 
-def register_DAPI_HnE(fixed, moving, adv_tform=None, feature_tform=None, intensity_tform=None, mpp=None):
+def register_DAPI_HnE(fixed, moving, adv_tform=None, feature_tform=None, intensity_tform=None, mpp=None, max_ratio=0.6, n_octaves=3, n_scales=5, scale_factor=4):
+    """
+    Main registration function to detect features, register DAPI stained multiplexed image to HnE stained image using initial feature based 
+    registration followed by optional advanced feature based and/or intensity based registration.
+
+    Parameters:
+    - fixed (np.array) : fixed image
+    - moving (np.array) : moving image
+    - adv_tform (str, optional) : type of advanced registration to apply ('feature' or 'intensity')
+    - feature_tform (str, optional) : type of transformation for advanced feature based registration
+                                    ('affine', 'projective')
+    - intensity_tform (str, optional) : type of transformation for intensity based registration
+                                    ('rigid', 'affine', 'bspline',  'r-af-bs', 'af-bs', 'r-af', 'r-bs')
+    - mpp (float, optional) : pixel size only required for intensity based registration
+    - max_ratio (float) : maximum ratio for descriptor matching
+    - n_octaves (int) : number of octaves for SIFT
+    - n_scales (int) : number of scales per octave for SIFT
+    - scale_factor (int) : factor to downscale images for feature extraction
+
+    Returns:
+    - transformation_maps (dict) : dictionary of transformation maps (skimage Transform objects or itk Transform objects)
+                                    'initial similarity' : skimage Transform object for initial feature based registration
+                                    'intensity based' : dictionary of intensity based registration transforms (if any)
+                                                        'rigid' and/or 'affine' and/or 'bspline' : itk Transform object
+                                                        OR
+                                    'affine' or 'projective' : skimage Transform object
+    - registered_imgs (dict) : dictionary of registered images after each registration step
+                                    'intensity based' : dictionary of intensity based registered images (if any)
+                                                        'rigid' and/or 'affine' and/or 'bspline' : np.array of registered image
+                                                        OR
+                                    'affine' or 'projective' : np.array of registered image
+    - tre_points (list of np.array) : points selected for TRE computation [moving_points, fixed_points]
+    """
 
     transformations_map = {}
     registered_imgs = {}
 
-    tform_map_init, moving_img_aligned, [moving_tre_pts, fixed_tre_pts], [moving_reg_pts, fixed_reg_pts] = register_init_feature_based(fixed, moving)
+    tform_map_init, moving_img_aligned, [moving_tre_pts, fixed_tre_pts], [moving_reg_pts, fixed_reg_pts] = register_init_feature_based(fixed, moving, max_ratio=max_ratio, 
+                                                                                                                                       n_octaves=n_octaves, n_scales=n_scales, 
+                                                                                                                                       scale_factor=scale_factor)
     transformations_map['initial similarity'] = tform_map_init
     registered_imgs['initial similarity'] = moving_img_aligned
 

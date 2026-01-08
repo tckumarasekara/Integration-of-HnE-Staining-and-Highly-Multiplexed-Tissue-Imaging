@@ -17,15 +17,29 @@
 - The **initial registration without any advanced transformation** usually works well and faster without any advanced transformations.
 
 
-## Installation
+## Installing the package locally
 
-You can install **he2multi-reg** using pip:
+1. Create and activate a Conda environment:
 
 ```bash
-pip install he2multi_reg
+conda create -n he2multi python=3.11
+conda activate he2multi
 ```
 
----
+2. Install requirements.
+
+    for windows
+```bash
+pip install -r requirements_windows.txt
+```
+
+3. Install package:
+
+```bash
+pip install .
+```
+
+
 
 ## Usage as a command-line tool
 

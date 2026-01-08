@@ -4,6 +4,27 @@ from skimage.util import img_as_float32
 from scipy.stats import entropy
 
 def compute_TRE(tform_maps, tre_points, fixed, mpp=None):
+    """
+    Compute Target Registration Error (TRE) before and after each registration.
+
+    Parameters:
+    - tform_maps (dict) : dictionary of transformation maps (skimage Transform objects or itk Transform objects)
+                            'initial similarity' : skimage Transform object for initial feature based registration
+                            'intensity based' : dictionary of intensity based registration transforms (if any)
+                                                'rigid' and/or 'affine' and/or 'bspline' : itk Transform object
+                                                OR
+                            'affine' or 'projective' : skimage Transform object                                         
+    - tre_points (tuple of arrays) : (source points, destination points) for TRE computation
+    - fixed (np.array) : fixed image
+    - mpp (float, optional) : pixel size only required for TRE computation after intensity based registration
+
+    Returns:
+    - tre (dict) : dictionary of TRE values before and after each registration step
+                            'before registration' : float rTRE before registration
+                            'initial similarity' : float rTRE after initial feature based registration
+                            'rigid' and/or 'affine' and/or 'bspline' OR 'affine' or 'projective' : float rTRE after 
+                                                                                                    each registration (if any)                                                                                               
+    """
 
     src_points, dst_points = tre_points
     tre = {}
@@ -101,6 +122,18 @@ def compute_TRE(tform_maps, tre_points, fixed, mpp=None):
 
 
 def mutual_information_metric(fixed, moving, bins):
+    """
+    Compute the normalized Mutual Information (MI) between two images.
+
+    Parameters:
+    - fixed (np.array) : fixed image
+    - moving (np.array) : moving image
+    - bins (int) : number of bins for histogram computation
+
+    Returns:
+    - n_mutual_info (float) : normalized Mutual Information value
+    """
+
     fy, fx = fixed.shape
     my, mx = moving.shape
 
@@ -135,6 +168,28 @@ def mutual_information_metric(fixed, moving, bins):
 
 
 def compute_mutual_information(fixed, moving, transformed_imgs, bins = 50):
+    """
+    Compute normalized Mutual Information (MI) before and after each registration.
+
+    Parameters:
+    - fixed (np.array) : fixed image
+    - moving (np.array) : moving image
+    - transformed_imgs (dict) : dictionary of transformed images after each registration step
+                                'initial similarity' : np.array of image after initial feature based registration
+                                'intensity based' : dictionary of intensity based registered images (if any)
+                                                    'rigid' and/or 'affine' and/or 'bspline' : np.array of image
+                                                OR
+                                'affine' or 'projective' : np.array of image after feature based registration
+    - bins (int, optional) : number of bins for histogram computation (default is 50)
+
+    Returns:
+    - mi_scores (dict) : dictionary of normalized MI values before and after each registration step
+                                'before registration' : float normalized MI before registration
+                                'initial similarity' : float normalized MI after initial feature based registration
+                                'rigid' and/or 'affine' and/or 'bspline' OR 'affine' or 'projective' : float normalized MI after 
+                                                                                                        each registration (if any)                                                                                                 
+    """
+
     mi_scores = {}
     
     mi_before = mutual_information_metric(fixed, moving, bins)
