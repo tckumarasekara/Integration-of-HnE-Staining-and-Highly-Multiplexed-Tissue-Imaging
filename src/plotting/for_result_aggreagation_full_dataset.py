@@ -107,4 +107,11 @@ with open("result_plots_metrics_full_dataset/tre_sep.npy", "wb") as f:
 
 with open("result_plots_metrics_full_dataset/mi_sep.npy", "wb") as f:
     np.save(f, mi_sep)
+
+
+#----------------------------------------------------------
+# 2774, 2783 : no runs ------------------------------------
+# 2772 : no runs included due to None type metrics --------
+# 2782 : only 3 runs included due to None type metrics ----
+#---------------------------------------------------------- 
             
