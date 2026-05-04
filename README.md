@@ -27,7 +27,7 @@ Overall, this thesis focuses on providing a scalable framework for H\&E and high
 ## End-to-end subworkflow for integration
 
 <p align="center">
-  <img src="subworkflow_full_new.drawio.png" width="75%"/>
+  <img src="subworkflow_full_new.drawio.png" width="90%"/>
 </p>
 
 **Figure 2:** Subworkflow **he2multi-regseg** for integrating **stainsegmy** deep-learning segmentation module, and **stainwarpy** image registration modules.
