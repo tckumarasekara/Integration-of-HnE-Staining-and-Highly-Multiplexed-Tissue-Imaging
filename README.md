@@ -96,5 +96,5 @@ A collection of tools, modules and workflows for image registration, segmentatio
 
 ## Supervision
 
-This work was developed as a masters' thesis project under the supervision of Dr. Luis Kuhn Cueller, Carolin Schwitalla and Prof. Dr. Sven Nahnsen from QBiC, M3 Research Centre, University Hospital Tübingen.
+This work was developed as a masters' thesis project under the supervision of Dr. Luis Kuhn Cueller, Carolin Schwitalla and Prof. Dr. Sven Nahnsen from QBiC, M3 Research Center, University Hospital Tübingen.
 
