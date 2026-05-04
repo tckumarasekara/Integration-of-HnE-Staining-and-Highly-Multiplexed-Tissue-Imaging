@@ -4,16 +4,6 @@ This project focuses on integration of HnE staining and highly multiplexed tissu
 
 ---
 
-## Abstract
-
-Histopathology imaging plays a crucial role in diagnostic medicine and research, with HnE (hematoxylin and eosin) being the most widely used staining technique providing important information on tissue architecture and context. While it lacks rich information for cell type identification, highly multiplexed imaging, which stains multiple biomarkers on a single tissue section provides detailed phenotypic and functional information. Integration of these two complimentary modalities is limited by their lack of spatial correspondence. This thesis proposes a workflow for integration of these two modalities incorporating H\&E image segmentation and multi-modal image registration. 
-
-Several conventional methods, feature-based and intensity-based techniques were evaluated for HnE and multiplexed image registration. Feature-based rigid registration was concluded as the best and appropriate registration method for our use case. Two U-Net variants, basic U-Net and the proposed U-NeXt architecture, which is an updated U-Net inspired by principles of transformers, were trained for HnE segmentation. Both models exhibited better performance than the baseline, with U-Net giving the best performance. Best registration and segmentation methods were incorporated into a containerized, modular subworkflow for interoperable HnE and highly-multiplexed image integration.
-
-Overall, this thesis focuses on providing a scalable framework for H\&E and highly multiplexed image integration, through deep-learning based H\&E segmentation with feature-based H\&E and multiplexed image registration. 
-
----
-
 ## Overview of the Project
 
 <p align="center">
@@ -21,6 +11,16 @@ Overall, this thesis focuses on providing a scalable framework for H\&E and high
 </p>
 
 **Figure 1:** Overview of the process, including image registration, segmentation and integration.
+
+---
+
+## Abstract
+
+Histopathology imaging plays a crucial role in diagnostic medicine and research, with HnE (hematoxylin and eosin) being the most widely used staining technique providing important information on tissue architecture and context. While it lacks rich information for cell type identification, highly multiplexed imaging, which stains multiple biomarkers on a single tissue section provides detailed phenotypic and functional information. Integration of these two complimentary modalities is limited by their lack of spatial correspondence. This thesis proposes a workflow for integration of these two modalities incorporating H\&E image segmentation and multi-modal image registration. 
+
+Several conventional methods, feature-based and intensity-based techniques were evaluated for HnE and multiplexed image registration. Feature-based rigid registration was concluded as the best and appropriate registration method for our use case. Two U-Net variants, basic U-Net and the proposed U-NeXt architecture, which is an updated U-Net inspired by principles of transformers, were trained for HnE segmentation. Both models exhibited better performance than the baseline, with U-Net giving the best performance. Best registration and segmentation methods were incorporated into a containerized, modular subworkflow for interoperable HnE and highly-multiplexed image integration.
+
+Overall, this thesis focuses on providing a scalable framework for H\&E and highly multiplexed image integration, through deep-learning based H\&E segmentation with feature-based H\&E and multiplexed image registration. 
 
 ---
 
