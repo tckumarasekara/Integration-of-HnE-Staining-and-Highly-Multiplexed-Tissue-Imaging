@@ -92,6 +92,9 @@ A collection of tools, modules and workflows for image registration, segmentatio
 - Published trained models (Zenodo)  
   [![Zenodo](https://img.shields.io/badge/Zenodo-19631105-blue)](https://zenodo.org/records/19631105)
 
+- Published model in Bioimage.IO
+  [![Bioimage.IO](https://img.shields.io/badge/BioImage.IO-Model-green)](https://bioimage.io/#/artifacts/placid-trex)
+
 ---
 
 ## Supervision
